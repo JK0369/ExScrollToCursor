@@ -56,44 +56,53 @@ extension ViewController: UITextViewDelegate {
         shouldChangeTextIn range: NSRange,
         replacementText text: String
     ) -> Bool {
-        let lastText = textView.text as NSString
-        let allText = lastText.replacingCharacters(in: range, with: text)
+        let lastNSString = textView.text as NSString
+        let allText = lastNSString.replacingCharacters(in: range, with: text)
 
-        let canUseInput = allText.count <= maxCount
-
-        defer {
-            if canUseInput {
-                textCount = allText.count
-            } else {
-                textCount = textView.text.count
-            }
+        let overSize = allText.utf16Size <= maxCount
+        let isPasted = 1 < text.utf16Size
+        guard !overSize else {
+            textCount = allText.utf16Size
+            return true
+        }
+        guard isPasted else {
+            textCount = textView.text?.utf16Size ?? 0
+            return false
         }
         
-        guard !canUseInput else { return canUseInput }
-        
-            if textView.text.count < maxCount {
-                /// "abc{최대글자가 넘는 문자열 붙여넣기}def"
-                /// 기대결과: "abc{문자열}def"
-                let appendingText = text.substring(from: 0, to: maxCount - textView.text.count - 1)
-                textView.text = textView.text.inserting(appendingText, at: range.lowerBound)
-                
-                let isLastCursor = range.lowerBound >= textView.text.count
-                let movingCursorPosition = isLastCursor ? maxCount : (range.lowerBound + appendingText.count)
-                DispatchQueue.main.async {
-                    textView.selectedRange = NSMakeRange(movingCursorPosition, 0)
-                }
-            } else {
-                /// 카운트 값을 넘었을때 중간 커서에서 붙여넣기 > 커서가 문자열만큼 뒤로 가는 버그 > 다시 커서 제자리로 위치시키는 코드
-                DispatchQueue.main.async {
-                    textView.selectedRange = NSMakeRange(range.lowerBound, 0)
-                }
-            }
+        if textView.text.utf16Size < maxCount {
+            let isLastCursor = range.lowerBound >= textView.text.utf16Size
 
-        return canUseInput
+            /// "abc{붙여넣기}def" -> "abc{초과한 만큼 잘린 문자열}def"
+            let utf16Index = (maxCount - textView.text.utf16Size)
+            let index = text.index(utf16Index: utf16Index)
+            let appendingText = text.substring(from: 0, to: index - 1)
+            textView.text = textView.text.inserted(string: appendingText, utf16Index: range.lowerBound)
+
+            /// 커서
+            let movingCursorPosition = isLastCursor ? maxCount : (range.lowerBound + appendingText.utf16Size)
+            let selectedRange = NSMakeRange(movingCursorPosition, 0)
+            DispatchQueue.main.async {
+                textView.selectedRange = selectedRange
+            }
+        } else {
+            /// 이전에 입력된 문자열이 maxCount 넘을 때, 붙여넣기 시도한 경우 > 새로운 문자열이 입력되 않지만 커서가 뒤로 이동 > 다시 이전 위치로 커서 이동
+            let selectedRange = NSMakeRange(range.lowerBound, 0)
+            DispatchQueue.main.async {
+                textView.selectedRange = selectedRange
+            }
+        }
+
+        textCount = textView.text.utf16Size
+        return false
     }
 }
 
 extension String {
+    var utf16Size: Int {
+        utf16.count
+    }
+    
     func substring(from: Int, to: Int) -> String {
         guard from < count, to >= 0, to - from >= 0 else { return "" }
         let startIndex = index(startIndex, offsetBy: from)
@@ -101,9 +110,21 @@ extension String {
         return String(self[startIndex ..< endIndex])
     }
     
-    func inserting(_ string: String, at index: Int) -> String {
-        var originalString = self
-        originalString.insert(contentsOf: string, at: self.index(self.startIndex, offsetBy: index))
-        return originalString
+    func inserted(string: String, utf16Index: Int) -> String {
+        let startIndex = index(utf16Index: utf16Index)
+        guard 0 <= count - startIndex else { return string }
+        return String(prefix(startIndex)) + string + String(suffix(count - startIndex))
+    }
+    
+    func index(utf16Index: Int) -> Int {
+        var ret = 0
+        var count = 0
+        
+        for (i, v) in enumerated() {
+            guard count <= utf16Index else { break }
+            count += v.utf16.count
+            ret = i
+        }
+        return ret
     }
 }
