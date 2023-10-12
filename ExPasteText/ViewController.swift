@@ -8,10 +8,23 @@
 import UIKit
 
 class ViewController: UIViewController {
+    private let scrollView = {
+        let view = UIScrollView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    private let stackView = {
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
     private let textView = {
         let view = UITextView()
         view.textColor = .black
         view.backgroundColor = .lightGray
+        view.isScrollEnabled = false
+        view.font = .systemFont(ofSize: 34)
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -25,7 +38,7 @@ class ViewController: UIViewController {
         return label
     }()
     
-    private let maxCount = 300
+    private let maxCount = 1000
     private var textCount = 0 {
         didSet { label.text = "\(textCount)/\(maxCount)" }
     }
@@ -35,17 +48,24 @@ class ViewController: UIViewController {
         
         textView.delegate = self
         
-        view.addSubview(textView)
-        view.addSubview(label)
+        view.addSubview(scrollView)
+        scrollView.addSubview(stackView)
+        stackView.addArrangedSubview(label)
+        stackView.addArrangedSubview(textView)
+        
         NSLayoutConstraint.activate([
-            textView.heightAnchor.constraint(equalToConstant: 300),
-            textView.widthAnchor.constraint(equalToConstant: 300),
-            textView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            textView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
         ])
+        
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            stackView.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            stackView.widthAnchor.constraint(equalToConstant: UIScreen.main.bounds.width),
         ])
     }
 }
@@ -58,9 +78,16 @@ extension ViewController: UITextViewDelegate {
     ) -> Bool {
         let lastNSString = textView.text as NSString
         let allText = lastNSString.replacingCharacters(in: range, with: text)
-
+        
         let overSize = allText.utf16Size <= maxCount
         let isPasted = 1 < text.utf16Size
+        
+        if isPasted {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.scrollView.scrollToCursor(in: textView)
+            }
+        }
+        
         guard !overSize else {
             textCount = allText.utf16Size
             return true
@@ -72,13 +99,13 @@ extension ViewController: UITextViewDelegate {
         
         if textView.text.utf16Size < maxCount {
             let isLastCursor = range.lowerBound >= textView.text.utf16Size
-
+            
             /// "abc{붙여넣기}def" -> "abc{초과한 만큼 잘린 문자열}def"
             let utf16Index = (maxCount - textView.text.utf16Size)
             let index = text.index(utf16Index: utf16Index)
             let appendingText = text.substring(from: 0, to: index - 1)
             textView.text = textView.text.inserted(string: appendingText, utf16Index: range.lowerBound)
-
+            
             /// 커서
             let movingCursorPosition = isLastCursor ? maxCount : (range.lowerBound + appendingText.utf16Size)
             let selectedRange = NSMakeRange(movingCursorPosition, 0)
@@ -92,7 +119,7 @@ extension ViewController: UITextViewDelegate {
                 textView.selectedRange = selectedRange
             }
         }
-
+        
         textCount = textView.text.utf16Size
         return false
     }
@@ -126,5 +153,23 @@ extension String {
             ret = i
         }
         return ret
+    }
+}
+
+extension UIScrollView {
+    func scrollToCursor(in textView: UITextView) {
+        guard let selectedRange = textView.selectedTextRange else { return }
+        
+        // 커서 위치를 화면 좌표로 변환
+        let cursorRect = textView.caretRect(for: selectedRange.start)
+        
+        // 커서 위치가 화면에 보이도록 스크롤
+        let cursorRectInScrollView = textView.convert(cursorRect, to: self)
+        let visibleRect = CGRect(x: 0, y: contentOffset.y, width: bounds.size.width, height: bounds.size.height)
+        
+        if !visibleRect.contains(cursorRectInScrollView.origin) {
+            // 커서 위치가 화면에 보이지 않으면 스크롤
+            scrollRectToVisible(cursorRectInScrollView, animated: true)
+        }
     }
 }
