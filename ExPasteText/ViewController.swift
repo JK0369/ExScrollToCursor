@@ -80,7 +80,7 @@ extension ViewController: UITextViewDelegate {
         let allText = lastNSString.replacingCharacters(in: range, with: text)
         
         let overSize = allText.utf16Size <= maxCount
-        let isPasted = 1 < text.utf16Size
+        let isPasted = 1 < text.count
         
         if isPasted {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -158,12 +158,13 @@ extension String {
 
 extension UIScrollView {
     func scrollToCursor(in textView: UITextView) {
+        // 커서 위치를 가져옴
         guard let selectedRange = textView.selectedTextRange else { return }
         
-        // 커서 위치를 화면 좌표로 변환
+        // 커서 위치를 화면 좌표로 변환 (caret: 텍스트 커서를 의미)
         let cursorRect = textView.caretRect(for: selectedRange.start)
         
-        // 커서 위치가 화면에 보이도록 스크롤
+        // 커서 위치가 화면에 보이는 rect 영역 가져옴
         let cursorRectInScrollView = textView.convert(cursorRect, to: self)
         let visibleRect = CGRect(x: 0, y: contentOffset.y, width: bounds.size.width, height: bounds.size.height)
         
